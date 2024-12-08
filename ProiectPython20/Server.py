@@ -2,36 +2,49 @@ import socket
 import threading
 import random
 
-# Regulile jocului
-RULES = {
-    "rock": ["scissors", "lizard"],
-    "paper": ["rock", "spock"],
-    "scissors": ["paper", "lizard"],
-    "lizard": ["spock", "paper"],
-    "spock": ["scissors", "rock"]
-}
-
 MAX_PLAYERS = 3
 connected_players = []
 lock = threading.Lock()
 
 def determine_result(player_choice, server_choice):
-    """
-    Determină rezultatul jocului pentru un jucător.
-    """
     if player_choice == server_choice:
         return "draw"
-    elif server_choice in RULES[player_choice]:
-        return "win"
-    else:
-        return "lose"
 
-def handle_player(player_socket, addr, server_choice):
-    """
-    Gestionează fiecare jucător conectat.
-    """
+    if player_choice == "rock":
+        if server_choice in ["scissors", "lizard"]:
+            return "win"
+        else:
+            return "lose"
+
+    elif player_choice == "paper":
+        if server_choice in ["rock", "spock"]:
+            return "win"
+        else:
+            return "lose"
+
+    elif player_choice == "scissors":
+        if server_choice in ["paper", "lizard"]:
+            return "win"
+        else:
+            return "lose"
+
+    elif player_choice == "lizard":
+        if server_choice in ["spock", "paper"]:
+            return "win"
+        else:
+            return "lose"
+
+    elif player_choice == "spock":
+        if server_choice in ["scissors", "rock"]:
+            return "win"
+        else:
+            return "lose"
+
+    return "invalid"
+
+def handle_player(player_socket, addr):
     print(f"Player {addr} connected.")
-    player_socket.sendall(f"Welcome! The server already chose, now it's your turn!".encode())
+    player_socket.sendall(f"Welcome! The server already chose, now it's your turn!\n".encode())
 
     try:
         while True:
@@ -46,6 +59,8 @@ def handle_player(player_socket, addr, server_choice):
                 player_socket.sendall("Invalid move. Try again.\n".encode())
                 continue
 
+            server_choice = random.choice(list(RULES.keys()))
+            print(f"Server choice for this round: {server_choice}")
             print(f"Player {addr} chose: {player_choice}")
 
             # Determină rezultatul pentru jucător
@@ -68,6 +83,14 @@ def handle_player(player_socket, addr, server_choice):
             connected_players.remove(player_socket)
         print(f"Player {addr} disconnected.")
 
+def handle_rejected_player(client_socket):
+    try:
+        client_socket.sendall("Server is full. You cannot join at the moment. Goodbye!\n".encode())
+    except Exception as e:
+        print(f"Error sending rejection message: {e}")
+    finally:
+        client_socket.close()
+
 def main():
     host = "0.0.0.0"
     port = 12345
@@ -80,21 +103,15 @@ def main():
     print(f"Server started on {host}:{port}. Waiting for players...")
 
     while True:
-        # Așteaptă conexiuni noi
-        if len(connected_players) < MAX_PLAYERS:
-            client_socket, addr = server_socket.accept()
-            with lock:
+        client_socket, addr = server_socket.accept()
+
+        with lock:
+            if len(connected_players) < MAX_PLAYERS:
                 connected_players.append(client_socket)
-
-            # Generăm alegerea serverului doar când primul jucător se conectează
-            if len(connected_players) == 1:
-                server_choice = random.choice(list(RULES.keys()))
-                print(f"Server choice for this round: {server_choice}")
-
-            # Lansăm un thread pentru fiecare jucător conectat
-            threading.Thread(target=handle_player, args=(client_socket, addr, server_choice)).start()
-        elif len(connected_players) > MAX_PLAYERS:
-            player_socket.sendall("You cannot enter the game(already at full capacity). Goodbye!\n".encode())
+                threading.Thread(target=handle_player, args=(client_socket, addr)).start()
+            else:
+                print(f"Rejecting connection from {addr}: server is full.")
+                threading.Thread(target=handle_rejected_player, args=(client_socket,)).start()
 
 if __name__ == "__main__":
     main()
